@@ -17,17 +17,22 @@ import androidx.compose.ui.unit.dp
 import com.example.bestc.R
 import com.example.bestc.data.UserData
 import com.example.bestc.services.ProcessScreenHelper
-import com.example.bestc.data.SupabaseClient
-import kotlinx.coroutines.Dispatchers
+import java.time.LocalDateTime
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import android.content.Context
+import android.content.Intent
+import com.example.bestc.MainActivity
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     userData: UserData,
     startDate: LocalDateTime,
-    onUpdateSettings: (UserData) -> Unit
+    onUpdateSettings: (UserData) -> Unit,
+    onLogout: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -174,8 +179,8 @@ fun SettingsScreen(
         }
 
         Button(
-            onClick = { 
-                if (!isSaving) {  // Prevent multiple clicks
+            onClick = {
+                if (!isSaving) {
                     scope.launch {
                         try {
                             isSaving = true
@@ -183,21 +188,21 @@ fun SettingsScreen(
                                 wakeUpTime = wakeUpTime,
                                 sleepTime = sleepTime
                             )
-
-                            // First update the UI state
-                            onUpdateSettings(updatedUserData)
                             
+                            // Update UI first
+                            onUpdateSettings(updatedUserData)
+
                             // Then update alarms in background
                             withContext(Dispatchers.IO) {
                                 ProcessScreenHelper.updateUserDataAndAlarms(
-                                    context, 
-                                    updatedUserData, 
-                                    startDate
+                                    context = context,
+                                    userData = updatedUserData,
+                                    startDate = startDate
                                 )
                             }
                         } catch (e: Exception) {
-                            e.printStackTrace()
                             showError = true
+                            // Log the error if needed
                         } finally {
                             isSaving = false
                         }
@@ -218,16 +223,7 @@ fun SettingsScreen(
         }
 
         Button(
-            onClick = {
-                scope.launch {
-                    try {
-                        SupabaseClient.client.gotrue.logout()
-                        // Navigate back to auth screen
-                    } catch (e: Exception) {
-                        // Handle error
-                    }
-                }
-            },
+            onClick = onLogout,
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Logout")

@@ -12,6 +12,13 @@ import android.app.AlarmManager
 import android.os.SystemClock
 import android.app.PendingIntent
 import android.content.Context
+import android.media.MediaPlayer
+import android.net.Uri
+import java.util.*
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.app.Notification
 
 class AlarmService : Service() {
     companion object {
@@ -32,19 +39,20 @@ class AlarmService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == "RESCHEDULE_ALARMS") {
-            val context = applicationContext
-            val prefs = context.getSharedPreferences("UserPrefs", Context.MODE_PRIVATE)
-            
-            // Get saved data
+            val prefs = getSharedPreferences("UserPrefs", Context.MODE_PRIVATE)
+            if (!prefs.contains("wakeUpTime")) {
+                // Stop service if no user data exists
+                stopSelf()
+                return START_NOT_STICKY
+            }
+            // Reschedule alarms only if user data exists
             val userData = ProcessScreenHelper.getUserDataFromPrefs(prefs)
             val startDate = ProcessScreenHelper.getStartDateFromPrefs(prefs)
-            
-            // Reschedule alarms if data exists
             if (userData != null && startDate != null) {
-                ProcessScreenHelper.scheduleAlarms(context, userData, startDate)
+                ProcessScreenHelper.scheduleAlarms(this, userData, startDate)
             }
         }
-        return START_STICKY
+        return super.onStartCommand(intent, flags, startId)
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
@@ -82,4 +90,37 @@ class AlarmService : Service() {
         .setSmallIcon(R.drawable.ic_notification)
         .setPriority(NotificationCompat.PRIORITY_LOW)
         .build()
+
+    private fun handleTakeAction() {
+        MediaPlayerHelper.stop()
+        stopForeground(true)
+        stopSelf()
+    }
+
+    private fun handleSnoozeAction(originalIntent: Intent) {
+        MediaPlayerHelper.stop()
+        
+        // Reschedule alarm after 5 minutes
+        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val calendar = Calendar.getInstance().apply {
+            timeInMillis = System.currentTimeMillis()
+            add(Calendar.MINUTE, 5)
+        }
+
+        val pendingIntent = PendingIntent.getBroadcast(
+            this,
+            originalIntent.getIntExtra("alarm_id", 0),
+            originalIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        alarmManager.setExactAndAllowWhileIdle(
+            AlarmManager.RTC_WAKEUP,
+            calendar.timeInMillis,
+            pendingIntent
+        )
+
+        stopForeground(true)
+        stopSelf()
+    }
 } 

@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.media.RingtoneManager
+import android.util.Log
 import com.example.bestc.data.UserData
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -15,14 +16,23 @@ import java.util.*
 
 object ProcessScreenHelper {
     fun getUserDataFromPrefs(prefs: SharedPreferences): UserData? {
-        val wakeUpTime = prefs.getString("wakeUpTime", null) ?: return null
-        val sleepTime = prefs.getString("sleepTime", null) ?: return null
-        
-        return UserData(
-            wakeUpTime = wakeUpTime,
-            sleepTime = sleepTime,
-            // ... other fields
-        )
+        return try {
+            UserData(
+                gender = prefs.getString("gender", "") ?: "",
+                age = prefs.getInt("age", 0),
+                cigarettesPerDay = prefs.getInt("cigarettesPerDay", 0),
+                cigarettePrice = prefs.getString("cigarettePrice", null)?.toDouble() ?: run {
+                    Log.e("ProcessScreenHelper", "Invalid cigarette price format")
+                    return null
+                },
+                yearsOfSmoking = prefs.getInt("yearsOfSmoking", 0),
+                wakeUpTime = prefs.getString("wakeUpTime", "06:00") ?: "06:00",
+                sleepTime = prefs.getString("sleepTime", "22:00") ?: "22:00"
+            )
+        } catch (e: Exception) {
+            Log.e("ProcessScreenHelper", "Error loading user data: ${e.message}")
+            null
+        }
     }
 
     fun getStartDateFromPrefs(prefs: SharedPreferences): LocalDateTime? {
@@ -32,41 +42,60 @@ object ProcessScreenHelper {
     }
 
     fun scheduleAlarms(context: Context, userData: UserData, startDate: LocalDateTime) {
+        // Validate wake/sleep times first
+        if (userData.wakeUpTime.isEmpty() || userData.sleepTime.isEmpty()) {
+            throw IllegalArgumentException("Invalid wake/sleep times")
+        }
+        
+        val formatter = DateTimeFormatter.ofPattern("HH:mm")
+        val wakeUpTime = try {
+            LocalTime.parse(userData.wakeUpTime, formatter)
+        } catch (e: Exception) {
+            throw IllegalArgumentException("Invalid wake-up time format")
+        }
+        
+        val sleepTime = try {
+            LocalTime.parse(userData.sleepTime, formatter)
+        } catch (e: Exception) {
+            throw IllegalArgumentException("Invalid sleep time format")
+        }
+
+        // Validate time order
+        if (wakeUpTime >= sleepTime) {
+            throw IllegalArgumentException("Wake-up time must be before sleep time")
+        }
+
         try {
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
             
             // Cancel existing alarms first
             cancelExistingAlarms(context, alarmManager)
 
-            val formatter = DateTimeFormatter.ofPattern("HH:mm")
-            val wakeUpTime = try {
-                LocalTime.parse(userData.wakeUpTime, formatter)
-            } catch (e: Exception) {
-                LocalTime.of(6, 0) // Default fallback
-            }
+            val currentWeek = ChronoUnit.WEEKS.between(startDate, LocalDateTime.now()).toInt() + 1
             
-            val sleepTime = try {
-                LocalTime.parse(userData.sleepTime, formatter)
-            } catch (e: Exception) {
-                LocalTime.of(22, 0) // Default fallback
-            }
-            
-            val currentDate = LocalDateTime.now()
-            val weeksSinceStart = ChronoUnit.WEEKS.between(startDate, currentDate)
-            val currentWeek = weeksSinceStart + 1
-
             // Calculate time gap based on current week
             val timeGapMinutes = when {
-                currentWeek <= 1 -> 90L  // Week 1: 1h 30m
-                currentWeek == 2L -> 120L // Week 2: 2h
-                currentWeek == 3L -> 150L // Week 3: 2h 30m
-                currentWeek == 4L -> 180L // Week 4: 3h
-                currentWeek == 5L -> 210L // Week 5: 3h 30m
-                else -> 240L // Week 6+: 4h
+                currentWeek == 1 -> 90L    // 1h 30m
+                currentWeek == 2 -> 120L   // 2h
+                currentWeek == 3 -> 150L   // 2h 30m
+                currentWeek == 4 -> 180L   // 3h
+                currentWeek == 5 -> 210L   // 3h 30m
+                else -> 240L               // 4h (week 6+)
             }
 
-            val alarmTimes = calculateAlarmTimes(wakeUpTime, sleepTime, timeGapMinutes)
-            scheduleAlarmsForTimes(context, alarmTimes)
+            val alarmTimes = calculateAlarmTimes(
+                wakeUpTime, 
+                sleepTime,
+                timeGapMinutes
+            )
+            
+            // Filter alarms within wake-sleep window
+            val filteredTimes = alarmTimes.filter { time ->
+                time.isAfter(wakeUpTime) &&
+                time.isBefore(sleepTime)
+            }
+
+            scheduleAlarmsForTimes(context, filteredTimes)
         } catch (e: Exception) {
             e.printStackTrace()
             throw e
@@ -76,7 +105,7 @@ object ProcessScreenHelper {
     fun updateUserDataAndAlarms(context: Context, userData: UserData, startDate: LocalDateTime) {
         try {
             // First save the data
-            saveUserDataToPrefs(context, userData, startDate)
+            saveUserData(context, userData, startDate)
             
             // Then schedule new alarms (this will handle canceling existing alarms)
             scheduleAlarms(context, userData, startDate)
@@ -93,16 +122,22 @@ object ProcessScreenHelper {
     ): List<LocalTime> {
         val times = mutableListOf<LocalTime>()
         var currentTime = wakeUpTime
+        
+        // Add safety check for maximum alarms
+        val maxAlarms = 1000
+        var iterationCount = 0
 
-        while (currentTime.isBefore(sleepTime)) {
+        while (currentTime.isBefore(sleepTime) && iterationCount < maxAlarms) {
             times.add(currentTime)
             currentTime = currentTime.plusMinutes(intervalMinutes)
+            iterationCount++
             
-            if (currentTime.isAfter(sleepTime)) {
-                break
+            // Add overflow protection
+            if (iterationCount >= maxAlarms) {
+                throw IllegalStateException("Exceeded maximum allowed alarms ($maxAlarms)")
             }
         }
-
+        
         return times
     }
 
@@ -127,6 +162,7 @@ object ProcessScreenHelper {
                 putExtra("is_repeat", false)
                 putExtra("sound_uri", RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
                 putExtra("vibration_enabled", true)
+                putExtra("message", "Time for Nicotine Gum")
             }
 
             val pendingIntent = PendingIntent.getBroadcast(
@@ -157,18 +193,17 @@ object ProcessScreenHelper {
         }
     }
 
-    fun saveUserDataToPrefs(context: Context, userData: UserData, startDate: LocalDateTime) {
+    fun saveUserData(context: Context, userData: UserData, startDate: LocalDateTime) {
         val prefs = context.getSharedPreferences("UserPrefs", Context.MODE_PRIVATE)
-        prefs.edit().apply {
-            putString("wakeUpTime", userData.wakeUpTime)
-            putString("sleepTime", userData.sleepTime)
-            putString("gender", userData.gender)
-            putInt("age", userData.age)
-            putInt("cigarettesPerDay", userData.cigarettesPerDay)
-            putFloat("cigarettePrice", userData.cigarettePrice.toFloat())
-            putInt("yearsOfSmoking", userData.yearsOfSmoking)
-            putString("startDate", startDate.toString())
-            apply()
-        }
+        val editor = prefs.edit()
+        editor.putString("wakeUpTime", userData.wakeUpTime)
+        editor.putString("sleepTime", userData.sleepTime)
+        editor.putString("gender", userData.gender)
+        editor.putInt("age", userData.age)
+        editor.putInt("cigarettesPerDay", userData.cigarettesPerDay)
+        editor.putString("cigarettePrice", userData.cigarettePrice.toString())
+        editor.putInt("yearsOfSmoking", userData.yearsOfSmoking)
+        editor.putString("startDate", startDate.toString())
+        editor.apply()
     }
 } 

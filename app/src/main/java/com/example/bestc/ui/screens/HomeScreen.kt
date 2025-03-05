@@ -14,23 +14,53 @@ import com.example.bestc.data.UserData
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
 import kotlin.math.min
+import kotlinx.coroutines.delay
+
+import com.example.bestc.ui.components.HealthInfoCard
 
 @Composable
 fun HomeScreen(
     userData: UserData,
     startDate: LocalDateTime
 ) {
-    val currentDate = LocalDateTime.now()
-    val daysSinceStart = ChronoUnit.DAYS.between(startDate, currentDate)
+    val currentDateState = rememberUpdatedTime()
+    val currentDate = currentDateState.value
+
+    val daysSinceStart = remember(currentDate) {
+        ChronoUnit.DAYS.between(
+            startDate.toLocalDate(),
+            LocalDateTime.now().toLocalDate()
+        ) + 1
+    }
+
     val weeksSinceStart = daysSinceStart / 7
-    val currentWeek = min(weeksSinceStart + 1, 12)
+    val currentWeek = min(weeksSinceStart + 1, 6)
     
-    val totalProgress = (currentWeek.toFloat() / 12) * 100
+    val totalProgress = (currentWeek.toFloat() / 6) * 100
     val weekProgress = ((daysSinceStart % 7).toFloat() / 7) * 100
 
-    // Calculate savings
+    // Savings calculation
     val dailySavings = userData.cigarettesPerDay * userData.cigarettePrice
-    val totalSavings = dailySavings * daysSinceStart
+    val totalSavings = remember(daysSinceStart) {
+        dailySavings * daysSinceStart
+    }
+
+    // Auto-updating time effect
+    LaunchedEffect(Unit) {
+        while(true) {
+            delay(60_000) // Update every minute
+            currentDateState.value = LocalDateTime.now()
+        }
+    }
+
+    // Add dosage calculation at the top
+    val dosage = remember(userData.cigarettesPerDay) {
+        when {
+            userData.cigarettesPerDay < 7 -> "1mg"
+            userData.cigarettesPerDay in 7..20 -> "2mg"
+            else -> "4mg"
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -50,7 +80,7 @@ fun HomeScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "12-Week Journey Progress",
+                    text = "6-Week Journey Progress",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
@@ -65,7 +95,7 @@ fun HomeScreen(
                 )
                 
                 Text(
-                    text = "Week $currentWeek of 12",
+                    text = "Week $currentWeek of 6",
                     style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.padding(top = 8.dp)
                 )
@@ -97,7 +127,7 @@ fun HomeScreen(
                 )
                 
                 Text(
-                    text = "Day ${(daysSinceStart % 7) + 1} of Week $currentWeek",
+                    text = "Day $daysSinceStart of Week $currentWeek",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(top = 8.dp)
                 )
@@ -118,15 +148,27 @@ fun HomeScreen(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
-                Text(
-                    text = "₹%.2f".format(totalSavings),
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Text(
-                    text = "Daily savings: ₹%.2f".format(dailySavings),
-                    style = MaterialTheme.typography.bodyMedium
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "Daily Savings:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = "₹${"%.2f".format(dailySavings)}",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Total Saved:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = "₹${"%.2f".format(totalSavings)}", 
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
 
@@ -156,6 +198,13 @@ fun HomeScreen(
                 }
             }
         }
+
+        HealthInfoCard(
+            title = "Recommended Nicotine Dosage",
+            content = "Based on your ${userData.cigarettesPerDay} cigarettes/day:\n" +
+                     "Start with $dosage gum every 1-2 hours\n" +
+                     "Gradually reduce dosage over 6 weeks"
+        )
     }
 }
 
@@ -183,4 +232,16 @@ private fun getHealthMilestones(daysSinceStart: Long): List<String> {
             "Keep going strong!"
         )
     }
+}
+
+@Composable
+private fun rememberUpdatedTime(): MutableState<LocalDateTime> {
+    val timeState = remember { mutableStateOf(LocalDateTime.now()) }
+    LaunchedEffect(Unit) {
+        while(true) {
+            delay(1000)
+            timeState.value = LocalDateTime.now()
+        }
+    }
+    return timeState
 } 

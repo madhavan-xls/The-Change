@@ -1,6 +1,7 @@
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.serialization'
 }
 
 android {
@@ -66,11 +67,9 @@ dependencies {
     debugImplementation 'androidx.compose.ui:ui-tooling'
     debugImplementation 'androidx.compose.ui:ui-test-manifest'
     
-    // Supabase
-    implementation 'io.github.jan-tennert.supabase:postgrest-kt:1.4.7'
-    implementation 'io.github.jan-tennert.supabase:gotrue-kt:1.4.7'
-    implementation 'io.ktor:ktor-client-android:2.3.7'
-    
     // Coroutines
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
+
+    // Supabase
+    implementation 'io.github.jan-tennert.supabase:gotrue-kt:1.4.0'
 } 

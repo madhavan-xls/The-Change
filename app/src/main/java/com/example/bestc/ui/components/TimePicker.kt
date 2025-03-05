@@ -12,96 +12,85 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.ui.window.Dialog
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TimePicker(
+fun SimpleTimePicker(
     time: String,
     onTimeSelected: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showDialog by remember { mutableStateOf(false) }
-    var selectedHour by remember { mutableStateOf(12) }
+    var selectedHour by remember { mutableStateOf(6) }
     var selectedMinute by remember { mutableStateOf(0) }
-    var isAM by remember { mutableStateOf(true) }
 
-    Column(modifier = modifier) {
-        OutlinedButton(
-            onClick = { showDialog = true },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(8.dp),
-            colors = ButtonDefaults.outlinedButtonColors(
-                containerColor = MaterialTheme.colorScheme.surface
-            )
-        ) {
-            Text(
-                text = time.ifEmpty { "Select Time" },
-                style = MaterialTheme.typography.bodyLarge
-            )
+    LaunchedEffect(time) {
+        try {
+            val parsedTime = LocalTime.parse(time, DateTimeFormatter.ofPattern("HH:mm"))
+            selectedHour = parsedTime.hour
+            selectedMinute = parsedTime.minute
+        } catch (e: Exception) {
+            selectedHour = 6
+            selectedMinute = 0
         }
+    }
 
-        if (showDialog) {
-            Dialog(
-                onDismissRequest = { showDialog = false }
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surface
+    val displayTime = remember(selectedHour, selectedMinute) {
+        String.format("%02d:%02d", selectedHour, selectedMinute)
+    }
+
+    OutlinedButton(
+        onClick = { showDialog = true },
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Text(displayTime)
+    }
+
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            confirmButton = {
+                Button(onClick = {
+                    onTimeSelected(displayTime)
+                    showDialog = false
+                }) {
+                    Text("OK")
+                }
+            },
+            title = { Text("Select Time") },
+            text = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier.padding(16.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            // Hour picker
-                            NumberPicker(
-                                value = selectedHour,
-                                onValueChange = { selectedHour = it },
-                                range = 1..12
-                            )
-                            
-                            Text(":", style = MaterialTheme.typography.headlineLarge)
-                            
-                            // Minute picker
-                            NumberPicker(
-                                value = selectedMinute,
-                                onValueChange = { selectedMinute = it },
-                                range = 0..59,
-                                format = { "%02d".format(it) }
-                            )
-                            
-                            // AM/PM toggle
-                            Switch(
-                                checked = isAM,
-                                onCheckedChange = { isAM = it },
-                                thumbContent = {
-                                    Text(if (isAM) "AM" else "PM")
-                                }
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(24.dp))
-
-                        Button(
-                            onClick = {
-                                val hour = if (!isAM && selectedHour != 12) selectedHour + 12 
-                                       else if (isAM && selectedHour == 12) 0 
-                                       else selectedHour
-                                val timeString = "%02d:%02d".format(hour, selectedMinute)
-                                onTimeSelected(timeString)
-                                showDialog = false
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Set Time")
-                        }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Hour", style = MaterialTheme.typography.labelMedium)
+                        NumberPicker(
+                            value = selectedHour,
+                            onValueChange = { selectedHour = it },
+                            range = 0..23,
+                            modifier = Modifier.width(80.dp)
+                        )
+                    }
+                    
+                    Text(":", style = MaterialTheme.typography.headlineMedium)
+                    
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Minute", style = MaterialTheme.typography.labelMedium)
+                        NumberPicker(
+                            value = selectedMinute,
+                            onValueChange = { selectedMinute = it },
+                            range = 0..55,
+                            step = 5,
+                            modifier = Modifier.width(80.dp)
+                        )
                     }
                 }
             }
-        }
+        )
     }
 }
 
@@ -110,25 +99,39 @@ private fun NumberPicker(
     value: Int,
     onValueChange: (Int) -> Unit,
     range: IntRange,
-    format: (Int) -> String = { it.toString() }
+    modifier: Modifier = Modifier,
+    step: Int = 1
 ) {
-    Column {
-        IconButton(onClick = { 
-            if (value < range.last) onValueChange(value + 1) 
-        }) {
-            Icon(Icons.Default.KeyboardArrowUp, null)
+    // Convert IntRange to progression with step
+    val progression = remember(range, step) {
+        range step step
+    }
+
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        IconButton(
+            onClick = { 
+                if (value < progression.last) onValueChange((value + step).coerceAtMost(progression.last))
+            },
+            modifier = Modifier.size(48.dp)
+        ) {
+            Icon(Icons.Default.KeyboardArrowUp, "Increase")
         }
         
         Text(
-            text = format(value),
-            style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.align(Alignment.CenterHorizontally)
+            text = "%02d".format(value),
+            style = MaterialTheme.typography.headlineMedium
         )
         
-        IconButton(onClick = { 
-            if (value > range.first) onValueChange(value - 1) 
-        }) {
-            Icon(Icons.Default.KeyboardArrowDown, null)
+        IconButton(
+            onClick = { 
+                if (value > progression.first) onValueChange((value - step).coerceAtLeast(progression.first))
+            },
+            modifier = Modifier.size(48.dp)
+        ) {
+            Icon(Icons.Default.KeyboardArrowDown, "Decrease")
         }
     }
 } 

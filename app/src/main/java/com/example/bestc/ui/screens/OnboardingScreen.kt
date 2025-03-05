@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import com.example.bestc.data.UserData
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+import com.example.bestc.ui.components.SimpleTimePicker
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -182,12 +183,22 @@ fun OnboardingScreen(
                     
                     Button(
                         onClick = {
-                            if (cigarettesPerDay.isEmpty() || yearsOfSmoking.isEmpty()) {
-                                showError = true
-                                errorMessage = "Please fill all fields"
-                            } else {
-                                showError = false
-                                currentStep++
+                            val cigs = cigarettesPerDay.toIntOrNull() ?: 0
+                            val years = yearsOfSmoking.toIntOrNull() ?: 0
+                            
+                            when {
+                                cigs !in 1..100 -> {
+                                    showError = true
+                                    errorMessage = "Cigarettes per day must be between 1-100"
+                                }
+                                years !in 0..100 -> {
+                                    showError = true
+                                    errorMessage = "Years of smoking must be between 0-100"
+                                }
+                                else -> {
+                                    showError = false
+                                    currentStep++
+                                }
                             }
                         },
                         modifier = Modifier.fillMaxWidth()
@@ -226,9 +237,10 @@ fun OnboardingScreen(
                     
                     Button(
                         onClick = {
-                            if (cigarettePrice.isEmpty()) {
+                            val price = cigarettePrice.toDoubleOrNull() ?: 0.0
+                            if (price <= 0) {
                                 showError = true
-                                errorMessage = "Please enter the price"
+                                errorMessage = "Price must be greater than 0"
                             } else {
                                 showError = false
                                 currentStep++
@@ -257,9 +269,10 @@ fun OnboardingScreen(
                         style = MaterialTheme.typography.headlineSmall
                     )
                     
-                    TimePickerSection(
+                    SimpleTimePicker(
                         time = wakeUpTime,
-                        onTimeSelected = { wakeUpTime = it }
+                        onTimeSelected = { wakeUpTime = it },
+                        modifier = Modifier.fillMaxWidth()
                     )
                     
                     Spacer(modifier = Modifier.weight(1f))
@@ -291,9 +304,10 @@ fun OnboardingScreen(
                         style = MaterialTheme.typography.headlineSmall
                     )
                     
-                    TimePickerSection(
+                    SimpleTimePicker(
                         time = sleepTime,
-                        onTimeSelected = { sleepTime = it }
+                        onTimeSelected = { sleepTime = it },
+                        modifier = Modifier.fillMaxWidth()
                     )
                     
                     Spacer(modifier = Modifier.weight(1f))
@@ -301,24 +315,28 @@ fun OnboardingScreen(
                     Button(
                         onClick = {
                             try {
-                                val userData = UserData(
+                                val validatedData = UserData(
                                     gender = gender,
-                                    age = age.toIntOrNull() ?: 0,
-                                    cigarettesPerDay = cigarettesPerDay.toIntOrNull() ?: 0,
-                                    cigarettePrice = cigarettePrice.toDoubleOrNull() ?: 0.0,
-                                    yearsOfSmoking = yearsOfSmoking.toIntOrNull() ?: 0,
+                                    age = age.toInt().coerceIn(12, 100),
+                                    cigarettesPerDay = cigarettesPerDay.toInt().coerceIn(1, 100),
+                                    cigarettePrice = cigarettePrice.toDouble().coerceAtLeast(0.0),
+                                    yearsOfSmoking = yearsOfSmoking.toInt().coerceIn(0, 100),
                                     wakeUpTime = wakeUpTime,
                                     sleepTime = sleepTime
                                 )
-                                onComplete(userData)
+                                onComplete(validatedData)
                             } catch (e: Exception) {
                                 showError = true
-                                errorMessage = "Invalid data. Please check your inputs."
+                                errorMessage = "Invalid inputs:\n" +
+                                              "- Age: 12-100\n" +
+                                              "- Cigarettes/Day: 1-100\n" +
+                                              "- Price: ≥ 0\n" +
+                                              "- Years: 0-100"
                             }
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Complete")
+                        Text("Complete Setup")
                     }
                 }
             }
@@ -331,109 +349,5 @@ fun OnboardingScreen(
                 )
             }
         }
-    }
-}
-
-@Composable
-fun TimePickerSection(
-    time: String,
-    onTimeSelected: (String) -> Unit
-) {
-    var showDialog by remember { mutableStateOf(false) }
-    val formatter = DateTimeFormatter.ofPattern("HH:mm")
-    
-    val timeObj = try {
-        LocalTime.parse(time, formatter)
-    } catch (e: Exception) {
-        LocalTime.of(6, 0)
-    }
-    
-    // Define hour and minute outside the dialog
-    var hour by remember { mutableStateOf(timeObj.hour) }
-    var minute by remember { mutableStateOf(timeObj.minute) }
-    
-    Card(
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = "Selected Time: ${timeObj.format(DateTimeFormatter.ofPattern("hh:mm a"))}",
-                style = MaterialTheme.typography.titleMedium
-            )
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            Button(
-                onClick = { showDialog = true }
-            ) {
-                Text("Select Time")
-            }
-        }
-    }
-    
-    if (showDialog) {
-        AlertDialog(
-            onDismissRequest = { showDialog = false },
-            title = { Text("Select Time") },
-            text = {
-                Column {
-                    // Simple time picker with hour and minute selection
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly
-                    ) {
-                        // Hour picker
-                        Column {
-                            Text("Hour")
-                            Slider(
-                                value = hour.toFloat(),
-                                onValueChange = { hour = it.toInt() },
-                                valueRange = 0f..23f,
-                                steps = 23
-                            )
-                            Text("$hour")
-                        }
-                        
-                        // Minute picker
-                        Column {
-                            Text("Minute")
-                            Slider(
-                                value = minute.toFloat(),
-                                onValueChange = { minute = it.toInt() },
-                                valueRange = 0f..59f,
-                                steps = 11
-                            )
-                            Text("$minute")
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val selectedTime = try {
-                            val newTime = LocalTime.of(hour, minute)
-                            newTime.format(formatter)
-                        } catch (e: Exception) {
-                            time
-                        }
-                        onTimeSelected(selectedTime)
-                        showDialog = false
-                    }
-                ) {
-                    Text("Confirm")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showDialog = false }
-                ) {
-                    Text("Cancel")
-                }
-            }
-        )
     }
 } 
